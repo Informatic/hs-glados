@@ -164,7 +164,10 @@ if __name__ == '__main__':
         theFile.close()
         
         response_obj = json.loads(response.read())
-        print response_obj['hypotheses'][0]['utterance']
+        try:
+            print response_obj['hypotheses'][0]['utterance']
+        except:
+            continue;
         
         waeo = wap.WolframAlphaEngine('VVQEQU-WA6TQUJGUK', 'http://api.wolframalpha.com/v1/query.jsp')
         query = waeo.CreateQuery(response_obj['hypotheses'][0]['utterance'])
