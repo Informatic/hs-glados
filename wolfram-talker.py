@@ -15,14 +15,11 @@ import urllib, urllib2
 import json
 import festival
 import wap
+import thread
+import time
 
-try:
-	WOLFRAM_APIKEY = open(sys.path[0]+'/wolfram-apikey').read().strip()
-except IOError:
-	print 'Seems like you don\'t have wolfram-apikey file. Put your wolfram apikey there...'
-	sys.exit(1)
 
-THRESHOLD = 1600
+THRESHOLD = 4500
 CHUNK_SIZE = 1024
 FORMAT = pyaudio.paInt16
 RATE = 44100
@@ -146,44 +143,61 @@ class EnhancedFile(file):
         return int(os.fstat(self.fileno())[6])
         
 if __name__ == '__main__':
-    print("please speak a word into the microphone")
-    record_file = tempfile.mkstemp('.wav')[1]
-    
-    record_to_file(record_file)
-    print("done - result written to %s" % record_file)
-    print 'now converting...'
-    subprocess.call(['sox', record_file, record_file+'.flac', 'rate', '16k'])
-    print 'done, sending to google voice recognition...'
-    
-    theFile = EnhancedFile(record_file+'.flac', 'r')
-    theRequest = urllib2.Request("https://www.google.com/speech-api/v1/recognize?xjerr=1&client=chromium&lang=en-EN", theFile, {'Content-Type': 'audio/x-flac; rate=16000'})
-    response = urllib2.urlopen(theRequest)
-    theFile.close()
-    
-    response_obj = json.loads(response.read())
-    print response_obj['hypotheses'][0]['utterance']
-    
-    waeo = wap.WolframAlphaEngine(WOLFRAM_APIKEY, 'http://api.wolframalpha.com/v1/query.jsp')
-    query = waeo.CreateQuery(response_obj['hypotheses'][0]['utterance'])
-    result = waeo.PerformQuery(query)
-    waeqr = wap.WolframAlphaQueryResult(result)
-    
-    
-    processed = False
-    for pod in waeqr.Pods():
-        waep = wap.Pod(pod)
-        title = waep.Title()[0]
-        print '-',title
-        if not "input" in title.lower():
-            subpods = waep.Subpods()
-            for subpod in subpods:
-                waesp = wap.Subpod(subpod)
-                print '   =>',waesp.Title(), '=>', waesp.Plaintext(),type(waesp.Plaintext()[0]) == str
-                if (type(waesp.Plaintext()[0]) == str or type(waesp.Plaintext()[0]) == unicode) and waesp.Plaintext()[0].strip() != '' and not processed:
-                    festival.say(waesp.Plaintext()[0].strip().encode('iso-8859-2'))
-                    processed = True
-    #festival.say(response_obj['hypotheses'][0]['utterance'].encode('iso-8859-2'))
-    
-    print 'cleanup'
-    os.unlink(record_file)
-    os.unlink(record_file+'.flac')
+
+    while(1):
+        print("please speak a word into the microphone")
+        record_file = tempfile.mkstemp('.wav')[1]
+        
+        thread.start_new_thread(festival.say, ("Listening for commands.",))
+        time.sleep(1.5); #wait until festival stops speaking
+        #festival.say("Listening for commands.")
+        record_to_file(record_file)     
+        
+        print("done - result written to %s" % record_file)
+        print 'now converting...'
+        subprocess.call(['sox', record_file, record_file+'.flac', 'rate', '16k'])
+        print 'done, sending to google voice recognition...'
+        
+        theFile = EnhancedFile(record_file+'.flac', 'r')
+        theRequest = urllib2.Request("https://www.google.com/speech-api/v1/recognize?xjerr=1&client=chromium&lang=en-EN", theFile, {'Content-Type': 'audio/x-flac; rate=16000'})
+        response = urllib2.urlopen(theRequest)
+        theFile.close()
+        
+        response_obj = json.loads(response.read())
+        print response_obj['hypotheses'][0]['utterance']
+        
+        waeo = wap.WolframAlphaEngine('VVQEQU-WA6TQUJGUK', 'http://api.wolframalpha.com/v1/query.jsp')
+        query = waeo.CreateQuery(response_obj['hypotheses'][0]['utterance'])
+        result = waeo.PerformQuery(query)
+        waeqr = wap.WolframAlphaQueryResult(result)
+        
+        
+        processed = False
+        for pod in waeqr.Pods():
+            waep = wap.Pod(pod)
+            title = waep.Title()[0]
+            print '-',title
+            if not "input" in title.lower():
+                subpods = waep.Subpods()
+                for subpod in subpods:
+                    waesp = wap.Subpod(subpod)
+                    #print '   =>',waesp.Title(), '=>', waesp.Plaintext(),type(waesp.Plaintext()[0]) == str
+                    if (type(waesp.Plaintext()[0]) == str or type(waesp.Plaintext()[0]) == unicode) and waesp.Plaintext()[0].strip() != '' and not processed:
+                        string_to_speech = waesp.Plaintext()[0].strip().encode('iso-8859-2')
+                        string_to_speech = string_to_speech.replace('=','')
+                        string_to_speech = string_to_speech.replace('<','')
+                        string_to_speech = string_to_speech.replace('>','')
+                        string_to_speech = string_to_speech.replace('|',', ')
+                        string_to_speech = string_to_speech.replace('[','')
+                        string_to_speech = string_to_speech.replace(']','')
+                        string_to_speech = string_to_speech.replace("\\n2",'')
+                        string_to_speech = string_to_speech.replace('\n',". . ")
+                        
+                        print string_to_speech
+                        festival.say(string_to_speech)
+                        processed = True
+        #festival.say(response_obj['hypotheses'][0]['utterance'].encode('iso-8859-2'))
+        
+        print 'cleanup'
+        os.unlink(record_file)
+        os.unlink(record_file+'.flac')
